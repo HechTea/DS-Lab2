@@ -6,10 +6,11 @@
 #include <random>
 
 #define NOprobe 4
-#define EXPLR_BFS_MAXLEN 3
+//#define EXPLR_BFS_MAXLEN 4
 #define log_read_info //printf
-#define log_pick_dir printf
-#define log_path_info printf
+#define log_shortest_path //printf
+#define log_pick_dir //printf
+#define log_path_info //printf
 
 using namespace std;
 
@@ -109,10 +110,12 @@ public:
     ~OfflineCoverage();
     void ReadMap();
     void CalcShortestPath();
+    void CalcShortestPath_adj();
     void CalcDist();
 
     void PrintMap_Raw();
     void PrintMap_Dist();
+    void PrintMap_Dist_adj();
     void PrintMap_Equipotential();
     void PrintMap_Status(short curr_aye, short curr_jay);
     void PrintMap_Status_Path(int id);
@@ -127,8 +130,11 @@ private:
     const char _SADDLE = '^';
     const char _SPLIT = '*';
 
+    int EXPLR_BFS_MAXLEN = 19;
+
     int height, width, batteryCapacity;
     Tile ** room;
+    int ** pot_map[4];
 
 
     short startAye, startJay;
@@ -155,13 +161,16 @@ private:
 int main(void) {
     int height, width, batteryCapacity;
 
-    scanf("%d %d %d\n", &height, &width, &batteryCapacity);
+    scanf("%d %d %d", &height, &width, &batteryCapacity);
+    getchar();
 
     OfflineCoverage oc(height, width, batteryCapacity);
     oc.ReadMap();
     oc.PrintMap_Raw();
     oc.CalcShortestPath(); // calculate potential
+    oc.CalcShortestPath_adj();
     oc.PrintMap_Dist();
+    oc.PrintMap_Dist_adj();
     //oc.PrintMap_Equipotential();
     oc.CalcDist();
     return 0;
@@ -204,10 +213,15 @@ OfflineCoverage::~OfflineCoverage() {
 
 void OfflineCoverage::ReadMap() {
     char c;
+
     for(short aye=0; aye<height; aye++) {
+        log_read_info("<read>  row #%d\n", aye);
         for(short jay=0; jay<width; jay++) {
             c = getchar(); // 1/0
+            getchar(); // space or new line
+
             log_read_info("> (%d, %d) %c... ", aye, jay, c);
+
             if (c == '1') { // is wall
                 log_read_info("is wall.\n");
                 room[aye][jay].Initialize(true, aye, jay);
@@ -226,26 +240,36 @@ void OfflineCoverage::ReadMap() {
                 log_read_info("    WTF.\n");
             }
 
-            getchar(); // space or new line
         }
+
+        log_read_info(" > ");
+        for(short jay=0; jay<width; jay++) {
+            if (room[aye][jay].isWall && !room[aye][jay].isPlug) { // is wall
+                log_read_info("%c ", _WALL);
+            } else if (!room[aye][jay].isWall) {
+                log_read_info("%c ", _FLOOR);
+            } else if (room[aye][jay].isPlug) {
+                log_read_info("%c ", _PLUG);
+            }
+        }
+        log_read_info("<\n");
     }
 
-    for(short aye=0; aye<height; aye++) {
-        for(short jay=0; jay<width; jay++) {
-            RateBase(aye, jay, room[aye][jay].baseRating);
-        }
-    }
+
 }
 
 void OfflineCoverage::CalcShortestPath() { // calculate potential
     queue< pair<short, short> > visitQueue;
     pair<short, short> curr;
 
+    log_shortest_path("[CalcShortestPath]\n");
+
     room[startAye][startJay].potential = 0;
     visitQueue.push( {startAye, startJay} );
 
     // BFS
     while(!visitQueue.empty()) {
+        log_shortest_path("\tQueue size: %d\n", visitQueue.size());
         curr = visitQueue.front();
         visitQueue.pop();
         // count tiles at max distance
@@ -253,44 +277,80 @@ void OfflineCoverage::CalcShortestPath() { // calculate potential
             maxTiles ++;
         }
 
-        // left
-        if (curr.second > 0) {
-            if (!room[curr.first][curr.second-1].isWall) { // isn't wall
-                if (room[curr.first][curr.second-1].potential == INF) { // hasn't been visited
-                    room[curr.first][curr.second-1].potential = room[curr.first][curr.second].potential + 1;
-                    visitQueue.push( {curr.first, curr.second-1} );
+        log_shortest_path("\t  @ %d, %d\n", curr.first, curr.second);
+        for(int i=0; i<4; i++) {
+            if (isValidPosition(curr.first+_DAYE[i], curr.second+_DJAY[i], false)) {
+                if (room[curr.first+_DAYE[i]][curr.second+_DJAY[i]].potential == INF) {
+                    room[curr.first+_DAYE[i]][curr.second+_DJAY[i]].potential = room[curr.first][curr.second].potential + 1;
+                    visitQueue.push( pair<short, short>(curr.first+_DAYE[i], curr.second+_DJAY[i]) );
+                } else {
+                    log_shortest_path("\t    %5s visited.\n", _DIRNAME[i]);
                 }
-            }
-        }
-        // right
-        if (curr.first < width - 1) {
-            if (!room[curr.first][curr.second+1].isWall) { // isn't wall
-                if (room[curr.first][curr.second+1].potential == INF) { // hasn't been visited
-                    room[curr.first][curr.second+1].potential = room[curr.first][curr.second].potential + 1;
-                    visitQueue.push( {curr.first, curr.second+1} );
-                }
-            }
-        }
-        // up
-        if (curr.first > 0) {
-            if (!room[curr.first-1][curr.second].isWall) { // isn't wall
-                if (room[curr.first-1][curr.second].potential == INF) { // hasn't been visited
-                    room[curr.first-1][curr.second].potential = room[curr.first][curr.second].potential + 1;
-                    visitQueue.push( {curr.first-1, curr.second} );
-                }
-            }
-        }
-        // down
-        if (curr.first < height - 1) {
-            if (!room[curr.first+1][curr.second].isWall) { // isn't wall
-                if (room[curr.first+1][curr.second].potential == INF) { // hasn't been visited
-                    room[curr.first+1][curr.second].potential = room[curr.first][curr.second].potential + 1;
-                    visitQueue.push( {curr.first+1, curr.second} );
-                }
+            } else {
+                log_shortest_path("\t    %5s invalid.\n", _DIRNAME[i]);
             }
         }
     }
 }
+
+void OfflineCoverage::CalcShortestPath_adj() { // calculate potential
+    log_shortest_path("[CalcShortestPath - adjacent]\n");
+
+    for(int i=0; i<4; i++) {
+        queue< pair<short, short> > visitQueue;
+        pair<short, short> curr;
+        if (isValidPosition(startAye+_DAYE[i], startJay+_DJAY[i], false)) {
+            log_shortest_path("<CalcShortestPath - %s>\n", _DIRNAME[i]);
+
+            bool visited[height][width];
+            memset(visited, false, sizeof(bool)*height*width);
+
+            pot_map[i] = new int*[height];
+
+            for (int aye=0; aye<height; aye++) {
+                pot_map[i][aye] = new int[width];
+            }
+
+            pot_map[i][startAye+_DAYE[i]][startJay+_DJAY[i]] = 1;
+            visited[startAye+_DAYE[i]][startJay+_DJAY[i]] = true;
+            visitQueue.push( pair<short, short>(startAye+_DAYE[i], startJay+_DJAY[i]) );
+
+            // BFS
+            while(!visitQueue.empty()) {
+                log_shortest_path("\tQueue size: %d\n", visitQueue.size());
+                curr = visitQueue.front();
+                visitQueue.pop();
+                // count tiles at max distance
+                if (pot_map[i][curr.first][curr.second] >= batteryCapacity / 2) {
+                    maxTiles ++;
+                }
+
+                log_shortest_path("\t  @ %d, %d\n", curr.first, curr.second);
+                for(int j=0; j<4; j++) {
+                    if (isValidPosition(curr.first+_DAYE[j], curr.second+_DJAY[j], false)) {
+                        if (!visited[curr.first+_DAYE[j]][curr.second+_DJAY[j]]) {
+                            log_shortest_path("\t    %5s unvisited. Pushed into queue.  ", _DIRNAME[j]);
+                            pot_map[i][curr.first+_DAYE[j]][curr.second+_DJAY[j]] = pot_map[i][curr.first][curr.second] + 1;
+                            log_shortest_path("* ");
+                            visitQueue.push( pair<short, short>(curr.first+_DAYE[j], curr.second+_DJAY[j]) );
+                            log_shortest_path("* ");
+                            visited[curr.first+_DAYE[j]][curr.second+_DJAY[j]] = true;
+                            log_shortest_path("*\n");
+                        } else {
+                            log_shortest_path("\t    %5s visited.\n", _DIRNAME[j]);
+                        }
+                    } else {
+                        log_shortest_path("\t    %5s invalid.\n", _DIRNAME[j]);
+                    }
+                }
+            }
+        } else {
+            pot_map[i] = NULL;
+        }
+    }
+}
+
+
 
 void OfflineCoverage::CalcDist() { // the main function
 
@@ -762,15 +822,16 @@ char OfflineCoverage::BFSPick(vector<char>& travelOrder, short& aye, short& jay,
             // availVec is currently empty
             for(int i = 0; i < 4; i++) {
                 c = i;
-                log_pick_dir("\t    %5s (pot: %d)... ", _DIRNAME[c], room[aye+_DAYE[c]][jay+_DJAY[c]].potential);
                 if (isValidPosition(aye+_DAYE[c], jay+_DJAY[c], false)) {
+                    log_pick_dir("\t    %5s (pot: %d)... ", _DIRNAME[c], room[aye+_DAYE[c]][jay+_DJAY[c]].potential);
                     if (room[aye+_DAYE[c]][jay+_DJAY[c]].potential > room[aye][jay].potential) {
                         log_pick_dir("good.\n");
                         availVec.push_back(c);
                         continue;
                     }
+                } else {
+                    log_pick_dir("\t    %5s invalid.\n", _DIRNAME[c]);
                 }
-                log_pick_dir("nope.\n");
             }
 
             if (availVec.size() == 0) {
@@ -845,6 +906,11 @@ char OfflineCoverage::Return_Pick(vector<char>& travelOrder, short& aye, short& 
     } else if (visitQueue.size() != 0) {
     // more than 1 to choose from
         log_pick_dir("\tThere are %d ways to choose\n", visitQueue.size());
+        log_pick_dir("\t  ");
+        for(int i = 0; i<visitQueue.size(); i++) {
+            log_pick_dir("%5s ", _DIRNAME[visitQueue[i]]);
+        }
+        log_pick_dir("\n");
         // could spread out if using thread, could do random pick
         //  for now, prioritize unvisited direction, pick the first unvisited tile found in the order udlr
                                                                 /// TODO here ^^^^^
@@ -852,20 +918,21 @@ char OfflineCoverage::Return_Pick(vector<char>& travelOrder, short& aye, short& 
         for(int i = 0; i<visitQueue.size(); i++) {
             if(room[aye+_DAYE[visitQueue[i]]][jay+_DJAY[visitQueue[i]]].visited) {
             // if this direction is conformed to have been visited
+                log_pick_dir("\t  %5s has been visited\n", _DIRNAME[visitQueue[i]]);
                 continue;
             } else {
             // else check if this path has been visited for this particular probe
-                if (room[aye+_DAYE[i]][jay+_DJAY[i]].serial_number != pinfo.serial_number) {
+                if (room[aye+_DAYE[visitQueue[i]]][jay+_DJAY[visitQueue[i]]].serial_number != pinfo.serial_number) {
                 // if the tile.probe_trail records -not- the status for this probe
                 //   then it must haven't been visited, since this tile isn't conformed to have been visited
                 //   then it is clear.
-                    log_pick_dir("\t    SrNo. of %d, %d was %d, updated to %d\n", aye+_DAYE[i], jay+_DJAY[i], room[aye+_DAYE[i]][jay+_DJAY[i]].serial_number, pinfo.serial_number);
-                    room[aye+_DAYE[i]][jay+_DJAY[i]].serial_number = pinfo.serial_number;
+                    log_pick_dir("\t    SrNo. of %d, %d was %d, updated to %d\n", aye+_DAYE[visitQueue[i]], jay+_DJAY[visitQueue[i]], room[aye+_DAYE[visitQueue[i]]][jay+_DJAY[visitQueue[i]]].serial_number, pinfo.serial_number);
+                    room[aye+_DAYE[visitQueue[i]]][jay+_DJAY[visitQueue[i]]].serial_number = pinfo.serial_number;
                 } else {
                 // else, tile.probe_trail -does- record the status for this probe,
                 // meaning the info is valid for use, then check if it's been visited
-                    log_pick_dir("\t    SrNo. of %d, %d up to date, ", aye+_DAYE[i], jay+_DJAY[i]);
-                    if (room[aye+_DAYE[i]][jay+_DJAY[i]].probeTrail[pinfo.id]) {
+                    log_pick_dir("\t    SrNo. of %d, %d up to date, ", aye+_DAYE[visitQueue[i]], jay+_DJAY[visitQueue[i]]);
+                    if (room[aye+_DAYE[visitQueue[i]]][jay+_DJAY[visitQueue[i]]].probeTrail[pinfo.id]) {
                     // been visited, continue looking
                         log_pick_dir("but has been visited.\n");
                         continue;
@@ -941,7 +1008,7 @@ char OfflineCoverage::Return_Pick(vector<char>& travelOrder, short& aye, short& 
 }
 
 inline char OfflineCoverage::isValidPosition(short aye, short jay, bool allowWall) {
-    return (aye > 0 && jay > 0 && aye+1 < height && jay+1 < width && !(!allowWall && room[aye][jay].isWall));
+    return (aye >= 0 && jay >= 0 && aye <= height-1 && jay <= width-1 && !(!allowWall && room[aye][jay].isWall));
 }
 
 inline int OfflineCoverage::RateTile_out(short aye, short jay, int pi) {
@@ -1024,6 +1091,27 @@ void OfflineCoverage::PrintMap_Dist() {
             }
         }
         printf("\n\n");
+    }
+}
+
+void OfflineCoverage::PrintMap_Dist_adj() {
+    for(int i=0; i<4; i++) {
+        if (pot_map[i] == NULL) {
+            continue;
+        }
+        printf("\n[POTENTIAL MAP (%s)]\n\tHeight: %d, Width: %d, Battery: %d\n", _DIRNAME[i], height, width, batteryCapacity);
+        for(short aye=0; aye<height; aye++) {
+            for(short jay=0; jay<width; jay++) {
+                if (room[aye][jay].isPlug) {
+                    printf("   %c", _PLUG);
+                } else if (room[aye][jay].isWall) {
+                    printf("   %c", _WALL);
+                } else {
+                    printf("%4u", pot_map[i][aye][jay]);
+                }
+            }
+            printf("\n\n");
+        }
     }
 }
 
