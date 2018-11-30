@@ -5,6 +5,7 @@
 #include <math.h>
 #include <random>
 
+#define _DONOTPRINT //return
 #define NOprobe 4
 //#define EXPLR_BFS_MAXLEN 4
 #define log_read_info //printf
@@ -1062,6 +1063,7 @@ void OfflineCoverage::RateBase(short aye, short jay, int& rating) {
 }
 
 void OfflineCoverage::PrintMap_Raw() {
+    _DONOTPRINT;
     printf("\n[RAW MAP]\n\tHeight: %d, Width: %d, Battery: %d\n", height, width, batteryCapacity);
 
     for(short aye=0; aye<height; aye++) {
@@ -1079,6 +1081,7 @@ void OfflineCoverage::PrintMap_Raw() {
 }
 
 void OfflineCoverage::PrintMap_Dist() {
+    _DONOTPRINT;
     printf("\n[POTENTIAL MAP]\n\tHeight: %d, Width: %d, Battery: %d\n", height, width, batteryCapacity);
     for(short aye=0; aye<height; aye++) {
         for(short jay=0; jay<width; jay++) {
@@ -1095,6 +1098,7 @@ void OfflineCoverage::PrintMap_Dist() {
 }
 
 void OfflineCoverage::PrintMap_Dist_adj() {
+    _DONOTPRINT;
     for(int i=0; i<4; i++) {
         if (pot_map[i] == NULL) {
             continue;
@@ -1116,6 +1120,7 @@ void OfflineCoverage::PrintMap_Dist_adj() {
 }
 
 void OfflineCoverage::PrintMap_Equipotential() {
+    _DONOTPRINT;
     printf("\n[EQUIPOTENTIAL]\n\tHeight: %d, Width: %d, Battery: %d\n", height, width, batteryCapacity);
 
     for(short aye=0; aye<height; aye++) {
@@ -1136,6 +1141,7 @@ void OfflineCoverage::PrintMap_Equipotential() {
 }
 
 void OfflineCoverage::PrintMap_Status(short curr_aye, short curr_jay) {
+    _DONOTPRINT;
     printf("\n[MAP STATUS]\n\tFloor count %d  Cleaned count %d\n",floor_count, cleaned_count);
 
     for(short aye=0; aye<height; aye++) {
@@ -1159,6 +1165,7 @@ void OfflineCoverage::PrintMap_Status(short curr_aye, short curr_jay) {
 }
 
 void OfflineCoverage::PrintMap_Status_Path(int id) {
+    _DONOTPRINT;
     printf("\n[MAP STATUS]\n\tHeight: %d, Width: %d, Battery: %d\n", height, width, batteryCapacity);
 
     for(short aye=0; aye<height; aye++) {
