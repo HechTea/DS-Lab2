@@ -1,18 +1,22 @@
+
 #include <stdio.h>
 #include <string.h>
+#include <fstream>
+#include <iostream>
 #include <queue>
 #include <vector>
 #include <math.h>
 #include <random>
 
-#define _DONOTPRINT return
+#define _DONOTPRINT //return
 #define NOprobe 1
 //#define EXPLR_BFS_MAXLEN 4
 #define log_read_info //printf
 #define log_shortest_path //printf
 #define log_pick_dir //printf
-#define log_path_info //printf
+#define log_path_info printf
 #define log_output //printf
+#define log_progress printf
 
 using namespace std;
 
@@ -22,6 +26,14 @@ enum {UPi = 0, DOWNi = 1, LEFTi = 2, RIGHTi = 3};
 short _DAYE[4] = {-1, 1, 0, 0};
 short _DJAY[4] = {0, 0, -1, 1};
 char _DIRNAME[4][6] = {"UP", "DOWN", "LEFT", "RIGHT"};
+
+
+char ifileDir[50];
+char ofileDir[50];
+
+ifstream ifile;
+ofstream ofile;
+
 
 template<class T>
 struct Vector2D
@@ -166,22 +178,50 @@ private:
 
 
 
-int main(void) {
+int main(int argc, char** argv) {
     int height, width, batteryCapacity;
 
+    if(argc <= 1) return 0xAAAA;
+
+    // set directory
+    strcat(ifileDir, argv[1]);
+    strcat(ifileDir, "/floor.data");
+    strcat(ofileDir, argv[1]);
+    strcat(ofileDir, "/final.path");
+
+    // open file
+    //ifile.open(ifileDir, ios::in);
+    ofile.open(ofileDir, ios::out);
+
+    freopen(ifileDir, "r", stdin);
+
+    /*
+    ifile >> height >> width >> batteryCapacity;
+    ifile.get();
+    cout << "Input: " << height << " " << width << " " << batteryCapacity << "\n";
+    */
     scanf("%d %d %d", &height, &width, &batteryCapacity);
     getchar();
 
     OfflineCoverage oc(height, width, batteryCapacity);
     oc.ReadMap();
+    log_progress("Read map done.\n");
     oc.PrintMap_Raw();
     oc.CalcShortestPath(); // calculate potential
+    log_progress("Shortest path done.\n");
     //oc.CalcShortestPath_adj();
     oc.PrintMap_Dist();
     //oc.PrintMap_Dist_adj();
     //oc.PrintMap_Equipotential();
     oc.CalcDist();
+    log_progress("Calc done.\n");
     oc.Output();
+    log_progress("Output done.\n");
+    // close file
+    //ifile.close();
+    ofile.close();
+
+
     return 0;
 }
 
@@ -228,6 +268,8 @@ void OfflineCoverage::ReadMap() {
     for(short aye=0; aye<height; aye++) {
         log_read_info("<read>  row #%d\n", aye);
         for(short jay=0; jay<width; jay++) {
+            //ifile.get(c);
+            //ifile.get();
             c = getchar(); // 1/0
             getchar(); // space or new line
 
@@ -265,8 +307,6 @@ void OfflineCoverage::ReadMap() {
         }
         log_read_info("<\n");
     }
-
-
 }
 
 void OfflineCoverage::CalcShortestPath() { // calculate potential
@@ -280,7 +320,7 @@ void OfflineCoverage::CalcShortestPath() { // calculate potential
 
     // BFS
     while(!visitQueue.empty()) {
-        log_shortest_path("\tQueue size: %d\n", visitQueue.size());
+        log_shortest_path("\tQueue size: %lu\n", visitQueue.size());
         curr = visitQueue.front();
         visitQueue.pop();
         // count tiles at max distance
@@ -328,7 +368,7 @@ void OfflineCoverage::CalcShortestPath_adj() { // calculate potential
 
             // BFS
             while(!visitQueue.empty()) {
-                log_shortest_path("\tQueue size: %d\n", visitQueue.size());
+                log_shortest_path("\tQueue size: %lu\n", visitQueue.size());
                 curr = visitQueue.front();
                 visitQueue.pop();
                 // count tiles at max distance
@@ -367,7 +407,8 @@ void OfflineCoverage::Output() {
         log_output("<output>  WARNING!  Floor is not fully covered!  (%d missed)\n", floor_count - cleaned_count);
     }
     log_output("<output> Total steps: ");
-    printf("%d\n", route.size());
+    ofile << route.size() << "\n";
+    //printf("%lu\n", route.size());
 
     for(int i=0; i<route.size(); i++) {
         if(route[i] == UP) {
@@ -379,9 +420,9 @@ void OfflineCoverage::Output() {
         } else if(route[i] == RIGHT) {
             startJay ++;
         }
-        printf("%d %d\n", startAye, startJay);
+        ofile << startAye << " " << startJay << "\n";
+        //printf("%d %d\n", startAye, startJay);
     }
-
 }
 
 void OfflineCoverage::CalcDist() { // the main function
@@ -396,7 +437,15 @@ void OfflineCoverage::CalcDist() { // the main function
 
     int tmp_explore_count = 0;
 
+    int n = 0;
+    int t = 0;
+
     while(cleaned_count < floor_count) {
+        if(n % 1 == 0) {
+            printf("%5d\n", t++);
+        }
+        n++;
+
         int remaining_battery = batteryCapacity;
 
         /// EXPLORE
@@ -448,7 +497,7 @@ void OfflineCoverage::CalcDist() { // the main function
         best_path_idx = 0;
         best_path_val = -1;
         for(int pi=0; pi < NOprobe; pi++) {
-            log_path_info("<path - explore>  #%d    tO steps: %d    pI steps left: %d\n\t", pi, travelOrder[pi].size(), pathInfo[pi].step_limit);
+            log_path_info("<path - explore>  #%d    tO steps: %lu    pI steps left: %d\n\t", pi, travelOrder[pi].size(), pathInfo[pi].step_limit);
             for(int ti=0; ti < travelOrder[pi].size(); ti++) {
                 log_path_info("%5s ", _DIRNAME[travelOrder[pi][ti]]);
             }
@@ -533,7 +582,7 @@ void OfflineCoverage::CalcDist() { // the main function
 
         // for debug.  List all paths.
         for(int pi=0; pi < NOprobe; pi++) {
-            log_path_info("<path - return>  #%d    tO steps: %d    pI steps left: %d\n\t", pi, travelOrder[pi].size(), pathInfo[pi].step_limit);
+            log_path_info("<path - return>  #%d    tO steps: %lu    pI steps left: %d\n\t", pi, travelOrder[pi].size(), pathInfo[pi].step_limit);
             for(int ti=0; ti < travelOrder[pi].size(); ti++) {
                 log_path_info("%5s ", _DIRNAME[travelOrder[pi][ti]]);
             }
@@ -733,7 +782,7 @@ char OfflineCoverage::BFSPick(vector<char>& travelOrder, short& aye, short& jay,
             }
         } else {
         // there's more than 1 adjacent tile that haven't been visited
-            log_pick_dir("\tThere are %d ways to choose: ", availVec.size());
+            log_pick_dir("\tThere are %lu ways to choose: ", availVec.size());
             for(int i=0; i<availVec.size(); i++) {
                 log_pick_dir("%5s ", _DIRNAME[availVec[i]]);
             }
@@ -751,7 +800,7 @@ char OfflineCoverage::BFSPick(vector<char>& travelOrder, short& aye, short& jay,
             }
 
             if (target.size() == 0) {
-                log_pick_dir("\t  But all of them are too far from plug.\n", _DIRNAME[c]);
+                log_pick_dir("\t  But all of them are too far from plug.\n");
                 return 0; // didn't choose any.
             } else {
                 c = target[GetRand(pinfo.id) % target.size()];
@@ -833,7 +882,7 @@ char OfflineCoverage::BFSPick(vector<char>& travelOrder, short& aye, short& jay,
                 log_pick_dir("\t    No tiles to check.\n");
                 break;
             } else {
-                log_pick_dir("\t    %d tiles to check.\n", availPos_vec[li-1].size());
+                log_pick_dir("\t    %lu tiles to check.\n", availPos_vec[li-1].size());
             }
 
             for(int di = 0; di < availPos_vec[li-1].size(); di++) {
@@ -920,7 +969,7 @@ char OfflineCoverage::BFSPick(vector<char>& travelOrder, short& aye, short& jay,
                     log_pick_dir("\t    No tiles to check.\n");
                     break;
                 } else {
-                    log_pick_dir("\t    %d tiles to check.\n", availPos_vec[li].size());
+                    log_pick_dir("\t    %lu tiles to check.\n", availPos_vec[li].size());
                 }
 
                 for (int di = 0; di < availPos_vec[li].size(); di++) {
@@ -939,7 +988,7 @@ char OfflineCoverage::BFSPick(vector<char>& travelOrder, short& aye, short& jay,
 
 
             if (targetPos_vec.size() != 0) {
-                log_pick_dir("\t    There are %d tiles %d steps away that are unvisited\n", targetPos_vec.size(), li);
+                log_pick_dir("\t    There are %lu tiles %d steps away that are unvisited\n", targetPos_vec.size(), li);
 
                 BFS_pos& tmp = targetPos_vec[GetRand(pinfo.id) % targetPos_vec.size()];
                 log_pick_dir("\t    Chose %d, %d\n", tmp.first, tmp.second);
@@ -1059,7 +1108,7 @@ char OfflineCoverage::Return_Pick(vector<char>& travelOrder, short& aye, short& 
         }
     } else if (visitQueue.size() != 0) {
     // more than 1 to choose from
-        log_pick_dir("\tThere are %d ways to choose\n", visitQueue.size());
+        log_pick_dir("\tThere are %lu ways to choose\n", visitQueue.size());
         log_pick_dir("\t  ");
         for(int i = 0; i<visitQueue.size(); i++) {
             log_pick_dir("%5s ", _DIRNAME[visitQueue[i]]);
