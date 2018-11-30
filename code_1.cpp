@@ -5,13 +5,14 @@
 #include <math.h>
 #include <random>
 
-#define _DONOTPRINT //return
+#define _DONOTPRINT return
 #define NOprobe 1
 //#define EXPLR_BFS_MAXLEN 4
 #define log_read_info //printf
 #define log_shortest_path //printf
 #define log_pick_dir //printf
 #define log_path_info //printf
+#define log_output //printf
 
 using namespace std;
 
@@ -113,6 +114,7 @@ public:
     void CalcShortestPath();
     void CalcShortestPath_adj();
     void CalcDist();
+    void Output();
 
     void PrintMap_Raw();
     void PrintMap_Dist();
@@ -140,6 +142,7 @@ private:
     int height, width, batteryCapacity;
     Tile ** room;
     int ** pot_map[4];
+    vector<char> route;
 
 
     short startAye, startJay;
@@ -173,11 +176,12 @@ int main(void) {
     oc.ReadMap();
     oc.PrintMap_Raw();
     oc.CalcShortestPath(); // calculate potential
-    oc.CalcShortestPath_adj();
+    //oc.CalcShortestPath_adj();
     oc.PrintMap_Dist();
-    oc.PrintMap_Dist_adj();
+    //oc.PrintMap_Dist_adj();
     //oc.PrintMap_Equipotential();
     oc.CalcDist();
+    oc.Output();
     return 0;
 }
 
@@ -358,6 +362,27 @@ void OfflineCoverage::CalcShortestPath_adj() { // calculate potential
 }
 
 
+void OfflineCoverage::Output() {
+    if (cleaned_count != floor_count) {
+        log_output("<output>  WARNING!  Floor is not fully covered!  (%d missed)\n", floor_count - cleaned_count);
+    }
+    log_output("<output> Total steps: ");
+    printf("%d\n", route.size());
+
+    for(int i=0; i<route.size(); i++) {
+        if(route[i] == UP) {
+            startAye --;
+        } else if(route[i] == DOWN) {
+            startAye ++;
+        } else if(route[i] == LEFT) {
+            startJay --;
+        } else if(route[i] == RIGHT) {
+            startJay ++;
+        }
+        printf("%d %d\n", startAye, startJay);
+    }
+
+}
 
 void OfflineCoverage::CalcDist() { // the main function
 
@@ -448,6 +473,8 @@ void OfflineCoverage::CalcDist() { // the main function
         log_path_info("<path>  Best path(#%d) explored %d new tile.\n", best_path_idx, pathInfo[best_path_idx].explore_count);
         // make it official.  record the best path, update current position.
         for(int di = 0; di < travelOrder[best_path_idx].size(); di++) {
+            route.push_back(travelOrder[best_path_idx][di]);
+
             if(travelOrder[best_path_idx][di] == UP) {
                 curr_aye --;
             } else if(travelOrder[best_path_idx][di] == DOWN) {
@@ -525,6 +552,8 @@ void OfflineCoverage::CalcDist() { // the main function
 
         tmp_explore_count = 0;
         for(int di = 0; di < travelOrder[best_path_idx].size(); di++) {
+            route.push_back(travelOrder[best_path_idx][di]);
+
             if(travelOrder[best_path_idx][di] == UP) {
                 curr_aye --;
             } else if(travelOrder[best_path_idx][di] == DOWN) {
