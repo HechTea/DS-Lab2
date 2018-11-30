@@ -6,7 +6,7 @@
 #include <random>
 
 #define _DONOTPRINT //return
-#define NOprobe 4
+#define NOprobe 1
 //#define EXPLR_BFS_MAXLEN 4
 #define log_read_info //printf
 #define log_shortest_path //printf
@@ -122,6 +122,10 @@ public:
     void PrintMap_Status_Path(int id);
     void PrintMap_Specials();
 
+    char GetRand(int id) {
+        randarr[id] = (randarr[id] << 1) + ((randarr[id] & (1 << 7)) ? 1 : 0);
+        return randarr[id];
+    }
 
 private:
     const unsigned int INF = (unsigned int)-1;
@@ -131,7 +135,7 @@ private:
     const char _SADDLE = '^';
     const char _SPLIT = '*';
 
-    int EXPLR_BFS_MAXLEN = 19;
+    int EXPLR_BFS_MAXLEN = 50500; // absolute maximum distance in 1000x1000 map
 
     int height, width, batteryCapacity;
     Tile ** room;
@@ -182,6 +186,8 @@ int main(void) {
 OfflineCoverage::OfflineCoverage(int height, int width, int batteryCapacity) :
     height(height), width(width), batteryCapacity(batteryCapacity)
 {
+    EXPLR_BFS_MAXLEN = (batteryCapacity + 0.5) / 2.0;
+
     extend_length = batteryCapacity / 2;
     floor_count = cleaned_count = 0;
     serial_number = 0;
@@ -366,6 +372,8 @@ void OfflineCoverage::CalcDist() { // the main function
     int tmp_explore_count = 0;
 
     while(cleaned_count < floor_count) {
+        int remaining_battery = batteryCapacity;
+
         /// EXPLORE
         // explore candidate paths
         for(int pi=0; pi < NOprobe; pi++) {
@@ -373,7 +381,7 @@ void OfflineCoverage::CalcDist() { // the main function
             short jay = curr_jay;
             travelOrder[pi].clear();
 
-            pathInfo[pi].Reset(pi, ++serial_number, extend_length);
+            pathInfo[pi].Reset(pi, ++serial_number, remaining_battery);
             log_path_info("<path> serial number: %d\n", pathInfo[pi].serial_number);
 
 
@@ -382,29 +390,36 @@ void OfflineCoverage::CalcDist() { // the main function
                         ///   Just make sure whichever tile it went, it can return to recharge
                         /// ////////////////////////////////////////////
             // extend outward for half battery capacity
-            for(int bi=0; bi < extend_length && pathInfo[pi].step_limit > 0; bi++) {
+            while(true) {
                 //PickDirection(travelOrder[pi], aye, jay, pathInfo[pi]);
-                char c = BFSPick(travelOrder[pi], aye, jay, pathInfo[pi]);   ///         TODO: check the return value.
-                if (c == 1) {
-                    // advanced 1 step
+                char c = BFSPick(travelOrder[pi], aye, jay, pathInfo[pi]);
+                if (c == 0) {
+                // adjacent tile is unvisited, but didn't choose any because battery would run out
+                    break;
+                } else if (c == 1) {
+                // advanced 1 step
                     continue;
                 } else if (c == 2) {
-                    // no unvisited tile within reach
+                // no unvisited tile within reach
                     ///                 TODO: 2 actions.  return to plug in shortest path,
                     ///                   or wander further till half bat to see if it can get luck on the way to recharge
                     break;
                 } else if (c == 3) {
-                    // multiple steps taken.
+                // multiple steps taken.
                     continue;
                 } else if (c == 4) {
-                    // hit a corner
+                // hit a corner
                     ///                 TODO: Either wander, or return.  Could be combined with c==2
                     break;
+                } else {
+                    perror("[ERROR]  Unknown return value of BFSPick.\n");
                 }
             }
         }
 
         ///                                     TODO: if there's still power left, could add it to the returning stage
+
+        // for debug.  List all paths.
         best_path_idx = 0;
         best_path_val = -1;
         for(int pi=0; pi < NOprobe; pi++) {
@@ -431,6 +446,7 @@ void OfflineCoverage::CalcDist() { // the main function
             break;
         }
         log_path_info("<path>  Best path(#%d) explored %d new tile.\n", best_path_idx, pathInfo[best_path_idx].explore_count);
+        // make it official.  record the best path, update current position.
         for(int di = 0; di < travelOrder[best_path_idx].size(); di++) {
             if(travelOrder[best_path_idx][di] == UP) {
                 curr_aye --;
@@ -453,6 +469,9 @@ void OfflineCoverage::CalcDist() { // the main function
             } else log_path_info("\t  The tile HAS been visited.\n");
         }
         cleaned_count += pathInfo[best_path_idx].explore_count;
+        remaining_battery -= pathInfo[best_path_idx].explore_count;
+
+
         ///                                             TODO: pathInfo[].step_limit
         PrintMap_Status(curr_aye, curr_jay);
 
@@ -465,21 +484,27 @@ void OfflineCoverage::CalcDist() { // the main function
             short jay = curr_jay;
             travelOrder[pi].clear();
 
-            pathInfo[pi].Reset(pi, ++serial_number, batteryCapacity - extend_length);
+            pathInfo[pi].Reset(pi, ++serial_number, remaining_battery);
 
             log_path_info("<path> serial number: %d\n", pathInfo[pi].serial_number);
 
             // extend outward for half battery capacity
-            for(int bi=0; bi < batteryCapacity - extend_length; bi++) {
+            while(true) {
                 //PickDirection(travelOrder[pi], aye, jay, pathInfo[pi]);
                 char c = Return_Pick(travelOrder[pi], aye, jay, pathInfo[pi]);
-                if (c == 2) {
+                if (c == 1) {
+                // taken a step
+                    continue;
+                } else if (c == 2) {
                 // returned to plug
                     break;
+                } else {
+                    perror("[ERROR]  Unknown return value of Return_pick\n");
                 }
             }
         }
 
+        // for debug.  List all paths.
         for(int pi=0; pi < NOprobe; pi++) {
             log_path_info("<path - return>  #%d    tO steps: %d    pI steps left: %d\n\t", pi, travelOrder[pi].size(), pathInfo[pi].step_limit);
             for(int ti=0; ti < travelOrder[pi].size(); ti++) {
@@ -521,6 +546,8 @@ void OfflineCoverage::CalcDist() { // the main function
         }
         exit_dir = pathInfo[best_path_idx].exit_dir;
         cleaned_count += pathInfo[best_path_idx].explore_count;
+
+
         PrintMap_Status(curr_aye, curr_jay);
         if (tmp_explore_count != pathInfo[best_path_idx].explore_count) perror("Mismatch explore count.\n");
     }
@@ -593,10 +620,9 @@ char OfflineCoverage::BFSPick(vector<char>& travelOrder, short& aye, short& jay,
     vector<char> availVec;
     char c = -1;
 
-    // left barrel shift randarr
-    randarr[pinfo.id] = (randarr[pinfo.id] << 1) + ((randarr[pinfo.id] & (1 << 7)) ? 1 : 0);
 
-    log_pick_dir("<Exploring> @ %d, %d    battery: %d  random number: %d\n", aye, jay, pinfo.step_limit, randarr[pinfo.id]);
+
+    log_pick_dir("<Exploring> @ %d, %d    battery: %d\n", aye, jay, pinfo.step_limit);
 
     if (room[aye][jay].isPlug) {
     // we're starting from plug, only 1 direction to choose from (unless it's the first step)
@@ -613,6 +639,7 @@ char OfflineCoverage::BFSPick(vector<char>& travelOrder, short& aye, short& jay,
                     aye += _DAYE[i];
                     jay += _DJAY[i];
                     if (!room[aye][jay].probeTrail[pinfo.id]) room[aye][jay].probeTrail[pinfo.id] = true;
+                    if (room[aye][jay].serial_number != pinfo.serial_number) room[aye][jay].serial_number = pinfo.serial_number;
                     pinfo.step_limit --;
                     return 1;
                 }
@@ -625,6 +652,9 @@ char OfflineCoverage::BFSPick(vector<char>& travelOrder, short& aye, short& jay,
 
     // find nearest tile that hasn't been visited
     //  record those that meet the criteria
+
+
+
     for(int i=0; i<4; i++) {
         if (isValidPosition(aye+_DAYE[i], jay+_DJAY[i], false)) {
             // check if visited
@@ -654,14 +684,56 @@ char OfflineCoverage::BFSPick(vector<char>& travelOrder, short& aye, short& jay,
                 }
             }
 
-            availVec.push_back(i);
+            if (room[aye+_DAYE[i]][jay+_DJAY[i]].potential >= room[aye][jay].potential) {
+                availVec.push_back(i);
+            } else {
+                log_pick_dir("\t    But moves closer to plug.\n");
+            }
         }
     }
 
-    if (availVec.size() == 1) {
-    // only one adjacent tile haven't been visited
-        log_pick_dir("\tOnly 1 way to choose\n");
-        c = availVec.front();
+
+    if (availVec.size() != 0) {
+        if (availVec.size() == 1) {
+        // only one adjacent tile haven't been visited
+            log_pick_dir("\tOnly 1 way to choose\n");
+            c = availVec.front();
+            if (room[aye+_DAYE[c]][jay+_DJAY[c]].potential > pinfo.step_limit) {
+                log_pick_dir("\t  Which is %5s, which is too far from plug.\n", _DIRNAME[c]);
+                return 0; // didn't choose any.
+            }
+        } else {
+        // there's more than 1 adjacent tile that haven't been visited
+            log_pick_dir("\tThere are %d ways to choose: ", availVec.size());
+            for(int i=0; i<availVec.size(); i++) {
+                log_pick_dir("%5s ", _DIRNAME[availVec[i]]);
+            }
+            log_pick_dir("\n");
+            // if using thread, spread out; if not, random pick
+            //      Note: for thread, need to limit max thread count, once reached, still need to random pick
+
+            // for now, just random pick
+
+            vector<char> target;
+            for(int i=0; i<availVec.size(); i++) {
+                if (room[aye+_DAYE[availVec[i]]][jay+_DJAY[availVec[i]]].potential <= pinfo.step_limit) {
+                    target.push_back(availVec[i]);
+                }
+            }
+
+            if (target.size() == 0) {
+                log_pick_dir("\t  But all of them are too far from plug.\n", _DIRNAME[c]);
+                return 0; // didn't choose any.
+            } else {
+                c = target[GetRand(pinfo.id) % target.size()];
+//                log_pick_dir("\t  And %d of which is valid: ", target.size());
+//                for(int i=0; i<target.size(); i++) {
+//                    log_pick_dir("%5s ", _DIRNAME[target[i]]);
+//                }
+//                log_pick_dir("\n");
+            }
+        }
+
         travelOrder.push_back(c);
         aye += _DAYE[c];
         jay += _DJAY[c];
@@ -675,56 +747,47 @@ char OfflineCoverage::BFSPick(vector<char>& travelOrder, short& aye, short& jay,
                 room[aye][jay].probeTrail[pinfo.id] = true;
             }
         }
-    } else if (availVec.size() != 0) {
-    // there's more than 1 adjacent tile that haven't been visited
-        log_pick_dir("\tThere are %d ways to choose\n", availVec.size());
-        // if using thread, spread out; if not, random pick
-        //      Note: for thread, need to limit max thread count, once reached, still need to random pick
-
-        // for now, just random pick
-        c = availVec[randarr[pinfo.id] % availVec.size()];
-        travelOrder.push_back(c);
-        aye += _DAYE[c];
-        jay += _DJAY[c];
-        pinfo.step_limit --;
-
-        if (!room[aye][jay].visited) {
-        // if that way hasn't been visited
-            if (!room[aye][jay].probeTrail[pinfo.id]) {
-            // and if it is also unvisited in this probe
-                pinfo.explore_count ++;
-                room[aye][jay].probeTrail[pinfo.id] = true;
-            }
-        }
+        log_pick_dir("\n");
     } else {
     // all 4 adjacent tiles have been visited
-        log_pick_dir("\tAll adjacent tiles have been visited,\n");
-        // BFS the nearest unvisited tile, need to set max dist for BFS. once reached, random pick
-
-        ///          TODO: BFS
-        //              Note: might not have to check tiles that brings the robot closer to plug
-        // for now, choose the first valid tile in the order uldr
-
         vector< vector< BFS_pos > > availPos_vec(EXPLR_BFS_MAXLEN);
         vector< BFS_pos > targetPos_vec;
         // Note: availDir_vec[ '0' ] actually means available directions '1' step away
 
-        // first, add valid positions adjacent to current position to availPos_vec
+        // for now, use this stupid method.
+        bool checked[height][width];
+        memset(checked, false, sizeof(bool)*height*width);
+
+        log_pick_dir("\tAll adjacent tiles have been visited\n");
+
+        // first, add valid positions fulfilling the following criteria to availPos_vec
+        //   - hasn't been officially visited
+        //   - hasn't been visited in this probe
+        //   - moves away from plug
+                                        /// TODO: need tweak here.
+        checked[aye][jay] = true;
         for(int i = 0; i < 4; i++) {
             if (isValidPosition(aye+_DAYE[i], jay+_DJAY[i], false)) {
-                if(room[aye+_DAYE[i]][jay+_DJAY[i]].potential >= room[aye][jay].potential) {
-                // only check those that leads further from plug
-                ///      NOT SURE IF IT'S OKAY!
-                    availPos_vec[0].push_back( BFS_pos(aye+_DAYE[i], jay+_DJAY[i], i) );
-                }
+                availPos_vec[0].push_back( BFS_pos(aye+_DAYE[i], jay+_DJAY[i], i) );
+                checked[aye+_DAYE[i]][jay+_DJAY[i]] = true;
+//                if (!room[aye+_DAYE[i]][jay+_DJAY[i]].visited) {
+//                // The direction hasn't been visited
+//                    if (room[aye+_DAYE[i]][jay+_DJAY[i]].serial_number != pinfo.serial_number) {
+//                    // Hasn't been visited in this probe either
+//                        // update serial number of this tile
+//                        room[aye+_DAYE[i]][jay+_DJAY[i]].serial_number = pinfo.serial_number;
+//
+//                        if(room[aye+_DAYE[i]][jay+_DJAY[i]].potential >= room[aye][jay].potential) {
+//                        // only check those that leads further from plug
+//                            // doesn't need to check the "checked[][]" cuz... yeah.
+//                        }
+//                    }
+//                }
             }
         }
+
         // then, BFS until EXPLR_BFS_MAXLEN or found an unvisited tile
         //  note: once found, need to check if it's further than pinfo.step_limit
-
-                                        /// ////////////////////////////////////////////////////////////////
-                                        /// TODO!!!  In BFS, need to record which tile is already in availPos_vec!!!!
-                                        /// ////////////////////////////////////////////////////////////////
 
                                         ///   ALSO!  even though tiles that are EXPLR_BFS_MAXLEN steps away are added into availPos_vec
                                         ///      they weren't checked.
@@ -734,60 +797,122 @@ char OfflineCoverage::BFSPick(vector<char>& travelOrder, short& aye, short& jay,
                 log_pick_dir("\t  Cannot find any unvisited tile near enough to get to and return for recharge. (%d)\n", pinfo.step_limit);
                 return 2; // meaning ^^^^^
             }
+            /// Now that step_limit is initially assigned as battery_capacity, this ^^^^^ shouldn't be possible
+
             log_pick_dir("\t  Checking tiles %d steps away.\n", li);
-            log_pick_dir("\t    %d tiles to check.\n", availPos_vec[li-1].size());
+            if (availPos_vec[li-1].size() == 0) {
+                log_pick_dir("\t    No tiles to check.\n");
+                break;
+            } else {
+                log_pick_dir("\t    %d tiles to check.\n", availPos_vec[li-1].size());
+            }
 
             for(int di = 0; di < availPos_vec[li-1].size(); di++) {
                 log_pick_dir("\t    @ %d %d\n", availPos_vec[li-1][di].first, availPos_vec[li-1][di].second);
 
-                if (!room[availPos_vec[li-1][di].first][availPos_vec[li-1][di].second].visited) {
-                // if the direction is not conformed to have been visited
-                    if (room[availPos_vec[li-1][di].first][availPos_vec[li-1][di].second].serial_number != pinfo.serial_number) {
-                    // and the direction truly is unvisited, score!
-                        // then figure out how to get there...
-                        log_pick_dir("\t\t  SrNo. of %d, %d was %d, updated to %d\n", availPos_vec[li-1][di].first, availPos_vec[li-1][di].second,
-                                      room[availPos_vec[li-1][di].first][availPos_vec[li-1][di].second].serial_number, pinfo.serial_number);
-                        room[availPos_vec[li-1][di].first][availPos_vec[li-1][di].second].serial_number = pinfo.serial_number;
-                        room[availPos_vec[li-1][di].first][availPos_vec[li-1][di].second].probeTrail[pinfo.id] = false;
-                    } else {
-                    // else, tile.probe_trail -does- record the status for this probe,
-                    // meaning the info is valid for use, then check if it's been visited
-                        if (!room[availPos_vec[li-1][di].first][availPos_vec[li-1][di].second].probeTrail[pinfo.id]) {
-                            log_pick_dir("\t\t  SrNo. of %d, %d up to date, and hasn't been visited\n", availPos_vec[li-1][di].first, availPos_vec[li-1][di].second);
-                        } else {
-                        // truly has been visited
-                            continue;
-                        }
-                    }
-
-                    log_pick_dir("\t\tThis hasn't been visited!\n");
-                    // record this one, choose later
-                    targetPos_vec.push_back(availPos_vec[li-1][di]);
-                    continue;
-                }
-
                 // else, the direction HAS been visited
                 //   add valid tiles adjacent to the direction to availPos_vec
-                log_pick_dir("\t\tHAS been visited. recored tiles:\n\t\t  ");
+                log_pick_dir("\t\tHAS been visited. recored valid adjacent tiles:\n\t\t  ");
                 for(int i=0; i<4; i++) {
-                    if(isValidPosition(availPos_vec[li-1][di].first+_DAYE[i], availPos_vec[li-1][di].second+_DJAY[i], false)) {
-                        if(room[availPos_vec[li-1][di].first+_DAYE[i]][availPos_vec[li-1][di].second+_DJAY[i]].potential
-                           >= room[availPos_vec[li-1][di].first][availPos_vec[li-1][di].second].potential) {
-                        // only check those that leads further from plug
-                        ///      NOT SURE IF IT'S OKAY!
-                            availPos_vec[li].push_back( BFS_pos(availPos_vec[li-1][di].first+_DAYE[i],
-                                                                availPos_vec[li-1][di].second+_DJAY[i],
-                                                                availPos_vec[li-1][di].path, i) );
-                            log_pick_dir("%5s ", _DIRNAME[i]);
+                    log_pick_dir("\t\t%5s @ %d %d\n", _DIRNAME[i], availPos_vec[li-1][di].first+_DAYE[i], availPos_vec[li-1][di].second+_DJAY[i]);
+
+                    if (isValidPosition(availPos_vec[li-1][di].first+_DAYE[i], availPos_vec[li-1][di].second+_DJAY[i], false)) {
+                        if (!room[availPos_vec[li-1][di].first+_DAYE[i]][availPos_vec[li-1][di].second+_DJAY[i]].visited) {
+                        // if the direction is not conformed to have been visited
+                            if (room[availPos_vec[li-1][di].first+_DAYE[i]][availPos_vec[li-1][di].second+_DJAY[i]].serial_number != pinfo.serial_number) {
+                            // and the direction truly is unvisited, score!
+                                // then figure out how to get there...
+                                log_pick_dir("\t\t  SrNo. of %d, %d was %d, updated to %d (meaning that this truly hasn't been visited)\n",
+                                             availPos_vec[li-1][di].first+_DAYE[i], availPos_vec[li-1][di].second+_DJAY[i],
+                                             room[availPos_vec[li-1][di].first+_DAYE[i]][availPos_vec[li-1][di].second+_DJAY[i]].serial_number,
+                                             pinfo.serial_number);
+                                room[availPos_vec[li-1][di].first+_DAYE[i]][availPos_vec[li-1][di].second+_DJAY[i]].serial_number = pinfo.serial_number;
+                                room[availPos_vec[li-1][di].first+_DAYE[i]][availPos_vec[li-1][di].second+_DJAY[i]].probeTrail[pinfo.id] = false;
+
+                                // ~~~ teleport AAA ~~~
+
+                            } else {
+                            // else, tile.probe_trail -does- record the status for this probe,
+                            // meaning the info is valid for use, then check if it's been visited
+                                if (!room[availPos_vec[li-1][di].first+_DAYE[i]][availPos_vec[li-1][di].second+_DJAY[i]].probeTrail[pinfo.id]) {
+                                    log_pick_dir("\t\t  SrNo. of %d, %d up to date, and hasn't been visited\n", availPos_vec[li-1][di].first+_DAYE[i], availPos_vec[li-1][di].second+_DJAY[i]);
+
+                                    // ~~~ teleport AAA ~~~
+
+                                } else {
+                                // truly HAS been visited
+                                    log_pick_dir("\t\t  SrNo. of %d, %d up to date, and HAS been visited (in this probe at least)\n", availPos_vec[li-1][di].first+_DAYE[i], availPos_vec[li-1][di].second+_DJAY[i]);
+                                    continue;
+                                }
+                            }
+
+                            // ~~~ AAA ~~~
+                            // only the directions that are unvisited get to this part.
+                            if (room[availPos_vec[li-1][di].first+_DAYE[i]][availPos_vec[li-1][di].second+_DJAY[i]].potential
+                                >= room[availPos_vec[li-1][di].first][availPos_vec[li-1][di].second].potential) {
+                            // only check those that leads further from plug
+                                /// hasn't been visited, goes away from plug.  add into targetPos_vec
+                                log_pick_dir("\t\t  This has higher potential. BINGO!\n");
+                                targetPos_vec.push_back(availPos_vec[li-1][di]);
+                                continue;
+                            } else {
+                            // leads closer to plug. don't add
+                                log_pick_dir("\t\t  This moves close to plug. Don't add\n");
+                                continue;
+                            }
+                        } else {
+                        // this direction has been visited, decide if adding its adjacent tiles
+                            log_pick_dir("\t\t  Has been officially visited.  Decide whether to add into queue...\n");
+                            if (targetPos_vec.size() == 0) {
+                            // only add the neighbor of this direction into BFS queue if no unvisited tiles had been found
+                                log_pick_dir("\t\t    No unvisited tile has been found so far...");
+                                if (checked[availPos_vec[li-1][di].first+_DAYE[i]][availPos_vec[li-1][di].second+_DJAY[i]]) {
+                                    // this position has been added to BFS queue, or something...
+                                    log_pick_dir("  but no, cuz it has already been added\n");
+                                    continue;
+                                } else {
+                                    log_pick_dir("  and yup.  New to the queue.  Adding.\n");
+                                    availPos_vec[li].push_back( BFS_pos(availPos_vec[li-1][di].first+_DAYE[i],
+                                                                        availPos_vec[li-1][di].second+_DJAY[i],
+                                                                        availPos_vec[li-1][di].path, i) );
+                                    checked[availPos_vec[li-1][di].first+_DAYE[i]][availPos_vec[li-1][di].second+_DJAY[i]] = true;
+                                }
+                            }
                         }
                     }
-                } log_pick_dir("\n");
+                }
             }
 
-            if (targetPos_vec.size() != 0) {
-                log_pick_dir("\t    There are %d tiles %d steps away that are unvisited\n", targetPos_vec.size(), li+1);
 
-                BFS_pos& tmp = targetPos_vec[randarr[pinfo.id] % targetPos_vec.size()];
+            if (li == EXPLR_BFS_MAXLEN-1 && targetPos_vec.size() == 0) {
+                // check tiles at max distance
+                log_pick_dir("\t  Checking tiles %d (max) steps away.\n", li);
+                if (availPos_vec[li].size() == 0) {
+                    log_pick_dir("\t    No tiles to check.\n");
+                    break;
+                } else {
+                    log_pick_dir("\t    %d tiles to check.\n", availPos_vec[li].size());
+                }
+
+                for (int di = 0; di < availPos_vec[li].size(); di++) {
+                    log_pick_dir("\t\t@ %d %d ... ", availPos_vec[li][di].first, availPos_vec[li][di].second);
+                    if (!room[availPos_vec[li][di].first][availPos_vec[li][di].second].visited) {
+                        if (!room[availPos_vec[li][di].first][availPos_vec[li][di].second].probeTrail[pinfo.id]) {
+                            targetPos_vec.push_back(availPos_vec[li-1][di]);
+                        } else {
+                            log_pick_dir("has been visited in this probe.\n");
+                        }
+                    } else {
+                        log_pick_dir("is officially visited.\n");
+                    }
+                }
+            }
+
+
+            if (targetPos_vec.size() != 0) {
+                log_pick_dir("\t    There are %d tiles %d steps away that are unvisited\n", targetPos_vec.size(), li);
+
+                BFS_pos& tmp = targetPos_vec[GetRand(pinfo.id) % targetPos_vec.size()];
                 log_pick_dir("\t    Chose %d, %d\n", tmp.first, tmp.second);
                 log_pick_dir("\t\thow to get here: ");
 
@@ -813,7 +938,6 @@ char OfflineCoverage::BFSPick(vector<char>& travelOrder, short& aye, short& jay,
                 log_pick_dir("\n");
                 return 3; // means that multiple steps have been taken
             }
-
         }
         if (c == -1) {
             log_pick_dir("\t  No tile within %d steps is unvisited\n", EXPLR_BFS_MAXLEN);
@@ -840,7 +964,7 @@ char OfflineCoverage::BFSPick(vector<char>& travelOrder, short& aye, short& jay,
                 return 4;
             }
             // random pick
-            c = availVec[randarr[pinfo.id] % availVec.size()];
+            c = availVec[GetRand(pinfo.id) % availVec.size()];
             travelOrder.push_back(c);
             aye += _DAYE[c];
             jay += _DJAY[c];
@@ -947,7 +1071,7 @@ char OfflineCoverage::Return_Pick(vector<char>& travelOrder, short& aye, short& 
         // all directions that has lower potential have been visited
         // for now, random pick
         ///                                         TODO: BFS here
-            c = visitQueue[randarr[pinfo.id] % visitQueue.size()];
+            c = visitQueue[GetRand(pinfo.id) % visitQueue.size()];
             travelOrder.push_back(c);
             aye += _DAYE[c];
             jay += _DJAY[c];
