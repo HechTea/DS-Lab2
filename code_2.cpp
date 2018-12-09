@@ -8,18 +8,21 @@
 #include <set>
 #include <math.h>
 #include <random>
+#include <algorithm>
 
-#define _DONOTPRINT //return
+#define _DONOTPRINT return
 #define NOprobe 1
 //#define EXPLR_BFS_MAXLEN 4
 #define log_read_info //printf
 #define log_shortest_path //printf
-#define log_pick_dir printf
-#define log_path_info printf
-#define log_probe_info printf
-#define log_output printf
-#define log_progress printf
-#define log_set_op printf
+#define log_pick_dir    //printf
+#define log_path_info   //printf
+#define log_probe_info  //printf
+#define log_output      //printf
+#define log_progress    printf
+#define log_set_op      //printf
+#define log_set_info    //printf
+#define log_minimap_op  //printf
 
 using namespace std;
 
@@ -90,29 +93,30 @@ struct BFS_pos
 
 struct BFS_mini_map
 {
-    BFS_mini_map(int maxLen, short caye, short cjay) : _caye(caye), _cjay(cjay), mcaye(maxLen), mcjay(maxLen) {
-        _visited = new bool*[maxLen*2+1];
-        for(int i=0; i < maxLen * 2 + 1; i++) {
-            _visited[i] = new bool[maxLen*2+1];
-            memset(_visited[i], false, sizeof(bool)*2+1);
-        }
+    BFS_mini_map(int maxLen, short caye, short cjay) : 
+    _visited(maxLen*2+1, vector<bool>(maxLen*2+1, false)), _caye(caye), _cjay(cjay), mcaye(maxLen), mcjay(maxLen) {
         _visited[mcaye][mcjay] = true;
+        log_minimap_op("[MiniMap]  Mini map created!  Center %d, %d\n", caye, cjay);
     }
     ~BFS_mini_map() {
+        /*
         for(int i=0; i < mcaye * 2 - 1; i++) {
             delete[] _visited[i];
         }
-        delete[] _visited;
+        deployete[] _visited;
+        */
     }
 
     bool isChecked(short aye, short jay) {
+        log_minimap_op("\n\t      [MiniMap]  checking %d, %d (%d, %d)... %c\n\t      ", aye, jay, mcaye + (aye - _caye), mcjay + (jay - _cjay), (_visited[mcaye + (aye - _caye)][mcjay + (jay - _cjay)] == true ? 'T' : 'F'));
         return _visited[mcaye + (aye - _caye)][mcjay + (jay - _cjay)];
     }
     void Check(short aye, short jay) {
-        _visited[mcaye + (aye - _caye)][mcjay + (jay - _cjay)] = true;
+        if (_visited[mcaye + (aye - _caye)][mcjay + (jay - _cjay)] == false)
+            _visited[mcaye + (aye - _caye)][mcjay + (jay - _cjay)] = true;
     }
 
-    bool ** _visited;
+    vector< vector<bool> > _visited;
     short _caye, _cjay;
     short mcaye, mcjay;
 };
@@ -196,7 +200,7 @@ private:
     vector< set<unsigned int> > dir_dist_vec[4];
 
 
-    short startAye, startJay;
+    short startAye = -1, startJay = -1;
     int extend_length;
     int floor_count = 0, cleaned_count = 0;
     char exit_dir = 5;
@@ -209,10 +213,11 @@ private:
     unsigned char randarr[NOprobe];
     unsigned char mask[NOprobe];
 
-    set<unsigned int>::iterator _set_iter;
+    set<unsigned int>::iterator _set_iter;              /// Somehow, erasing an element of another set interfereses with the iterator of current set.
     set<unsigned int>::iterator _dir_set_iter[4];
     int _max_unvisited_dist;
     int _dir_max_unvisited_dist[4];
+    bool hasRemoved = true;
 
     int trans_int(short aye, short jay) { return (aye << 10) + jay; }
     inline short getAye_dv(const set<unsigned int>::iterator pos) { return (*pos) >> 10; }
@@ -237,6 +242,8 @@ private:
     inline char isValidPosition(short aye, short jay, bool allowWall);
     inline int RateTile_out(short aye, short jay, int pi);
     inline void RateBase(short aye, short jay, int& rating);
+
+    char OppositeDir(char dir);
 };
 
 
@@ -281,14 +288,16 @@ int main(int argc, char** argv) {
     oc.ReadMap();
     log_progress("Read map done.\n");
     oc.PrintMap_Raw();
+    log_progress("Print map done.\n");
     oc.CalcShortestPath(); // calculate potential
-    oc.CalcShortestPath_adj();
     log_progress("Shortest path done.\n");
+    oc.CalcShortestPath_adj();
+    log_progress("Shortest path to 4 directions done.\n");
+    //oc.TestSet();
     oc.Print_dist_vet();
-    oc.Print_dir_dist_vet();
+    //oc.Print_dir_dist_vet();
     oc.PrintMap_Dist();
     oc.PrintMap_Dist_adj();
-    //oc.TestSet();
     //oc.PrintMap_Equipotential();
 
     oc.CalcDist();
@@ -348,8 +357,10 @@ void OfflineCoverage::ReadMap() {
         for(short jay=0; jay<width; jay++) {
             //ifile.get(c);
             //ifile.get();
-            c = getchar(); // 1/0
-            getchar(); // space or new line
+            while(true) {
+                c = getchar();
+                if (c == '0' || c == '1' || c == 'R') break;
+            }
 
             log_read_info("> (%d, %d) %c... ", aye, jay, c);
 
@@ -368,7 +379,8 @@ void OfflineCoverage::ReadMap() {
                 startJay = jay;
             }
             else {
-                log_read_info("    WTF.\n");
+                log_read_info("(%d)(space: %d) WTF.\n", c, ' ');
+                return;
             }
 
         }
@@ -391,7 +403,7 @@ void OfflineCoverage::CalcShortestPath() { // calculate potential
     queue< pair<short, short> > visitQueue;
     pair<short, short> curr;
 
-    log_shortest_path("[CalcShortestPath]\n");
+    log_shortest_path("[CalcShortestPath]  Starting: %d, %d\n", startAye, startJay);
 
     room[startAye][startJay].potential = 0;
     visitQueue.push( {startAye, startJay} );
@@ -438,7 +450,7 @@ void OfflineCoverage::CalcShortestPath() { // calculate potential
     _set_iter = dist_vec[_max_unvisited_dist].begin();
 
     EXPLR_BFS_MAXLEN = (max_tile_distance * 2 + 2 > batteryCapacity) ? batteryCapacity/2 : max_tile_distance + 1;
-    printf("max_tile_distance: %d, EXPLR_BFS_MAXLEN: %d\n", max_tile_distance, EXPLR_BFS_MAXLEN);
+    log_read_info("max_tile_distance: %d, EXPLR_BFS_MAXLEN: %d\n", max_tile_distance, EXPLR_BFS_MAXLEN);
 }
 
 /// nope
@@ -605,15 +617,20 @@ void OfflineCoverage::CalcDist() {
         }
 
                                     /// TODO: if even the best path explores 0 new tile, start over.
-        tmp_explore_count = 0;
-        // for now, break directly
-        if (pathInfo[best_path_idx].explore_count == 0) {
-            log_path_info("<path>  Even best path cleans 0 new tile.  Break.\n");
-            break;
+                                    ////////////////////////////////////////////////
+                                    /// Note!  Need to consider change exit dir!
+                                    ////////////////////////////////////////////////
+        if (!changed) {
+            // for now, break directly
+            if (pathInfo[best_path_idx].explore_count == 0) {
+                log_path_info("<path>  Even best path cleans 0 new tile.  Break.\n");
+                break;
+            }
+            log_path_info("<path>  Best path(#%d) explored %d new tile.\n", best_path_idx, pathInfo[best_path_idx].explore_count);
         }
-        log_path_info("<path>  Best path(#%d) explored %d new tile.\n", best_path_idx, pathInfo[best_path_idx].explore_count);
         
 
+        tmp_explore_count = 0;
         // make it official.  record the best path, update current position.
         for(int di = 0; di < travelOrder[best_path_idx].size(); di++) {
             char c = travelOrder[best_path_idx][di];
@@ -623,16 +640,20 @@ void OfflineCoverage::CalcDist() {
             curr_jay += _DJAY[c];
             log_path_info("\tRegistering '%s'\n", _DIRNAME[c]);
 
-            RemovePoint(curr_aye, curr_jay, room[curr_aye][curr_jay].potential);
 
             if (!room[curr_aye][curr_jay].visited) {
                 log_path_info("\t  The tile hasn't been visited.\n");
+                RemovePoint(curr_aye, curr_jay, room[curr_aye][curr_jay].potential);
                 room[curr_aye][curr_jay].visited = true;
                 tmp_explore_count ++;
             } else log_path_info("\t  The tile HAS been visited.\n");
         }
         cleaned_count += pathInfo[best_path_idx].explore_count;
         remaining_battery -= pathInfo[best_path_idx].explore_count;
+
+        if (changed) {
+            exit_dir = pathInfo[best_path_idx].exit_dir;
+        }
 
 
         ///                                             TODO: pathInfo[].step_limit
@@ -711,10 +732,10 @@ void OfflineCoverage::CalcDist() {
             curr_jay += _DJAY[c];
             log_path_info("\tRegistering '%5s'\n", _DIRNAME[c]);
 
-            RemovePoint(curr_aye, curr_jay, room[curr_aye][curr_jay].potential);
 
             if (!room[curr_aye][curr_jay].visited) {
                 log_path_info("\t  The tile hasn't been visited.\n");
+                RemovePoint(curr_aye, curr_jay, room[curr_aye][curr_jay].potential);
                 room[curr_aye][curr_jay].visited = true;
                 tmp_explore_count ++;
             } else log_path_info("\t  The tile HAS been visited.\n");
@@ -777,7 +798,10 @@ char OfflineCoverage::MaxDistOut(vector<char>& travelOrder, short& aye, short& j
     pinfo.step_limit --;
     if (!room[aye][jay].visited) pinfo.explore_count ++;
 
-    log_pick_dir("\tPick a position at max distance (%d).\n", _max_unvisited_dist);
+    log_pick_dir("\tPick a position at max distance (%d).  Power: %d\n", _max_unvisited_dist, pinfo.step_limit);
+    while (dist_vec[_max_unvisited_dist].size() == 0) {
+        GetNextPoint();
+    }
     while(attempt_count < dist_vec[_max_unvisited_dist].size()) {
         log_pick_dir("\t  #%d try.\n", attempt_count+1);
         // pick a position from dist_vec[max_tile_distance]
@@ -795,20 +819,21 @@ char OfflineCoverage::MaxDistOut(vector<char>& travelOrder, short& aye, short& j
         for(int i=0; i<4; i++) {
             log_pick_dir("%s: ", _DIRNAME[i]);
             if (pot_map[i] == NULL) {
-                log_pick_dir("%d, ",  -1);
+                log_pick_dir("xx, ");
             } else {
-                log_pick_dir("%d, ", pot_map[i][tmpAye][tmpJay]);
+                log_pick_dir("%d, ", pot_map[last_exit][tmpAye][tmpJay] + pot_map[i][tmpAye][tmpJay] - 1);
             }
         }
 
         // checking
-        if (pot_map[last_exit][tmpAye][tmpJay] <= pinfo.step_limit) {
+        if (pinfo.step_limit + 1 >= pot_map[last_exit][tmpAye][tmpJay] * 2) {
         // good, we should be able to get back.
+            // enter from the first available direction.
             enter_dir = last_exit;
         } else {
             enter_dir = -1;
         }
-
+        
 
 
         if (enter_dir != last_exit) {
@@ -874,13 +899,14 @@ char OfflineCoverage::ReturnRecharge(vector<char>& travelOrder, short& aye, shor
     char enter_dir = -1;
     bool availPlugDir[4];
 
-    log_pick_dir("<Return>  Calling PosToPlug.\n");
+    log_pick_dir("<Return>\n");
 
     // decide which direction to return.
     // check if any furthest position is reachable from the direction we decide
 
-    log_pick_dir("\t@ %d, %d.  Can enter from... ", aye, jay);
+    log_pick_dir("\t@ %d, %d power: %d.  Can enter from... ", aye, jay, pinfo.step_limit);
     for(int i=0; i<4; i++) {
+        if (pot_map[i] == NULL) continue;
         if (pot_map[i][aye][jay] <= pinfo.step_limit) {
             availPlugDir[i] = true;
             log_pick_dir("\t%s, ", _DIRNAME[i]);
@@ -1133,28 +1159,47 @@ char OfflineCoverage::BFSProbe(vector<char>& travelOrder, short& aye, short& jay
         // last iteration
         // only need check those that are furthest away, don't need to add for next time
             // check if there's any unvisited position at this distance, or if there's any position that happened to be plug
-            for(int ti = 0; ti < availPos_vec[li].size(); ti++) {
-                if (room[availPos_vec[li][ti].first][availPos_vec[li][ti].second].isPlug) {
-                    if (!plug_found) {
-                        plug_found = true;
-                        targetPos_vec.clear();
-                    }
-                    targetPos_vec.push_back(availPos_vec[li][ti]);
-                } else {
-                    if (room[ availPos_vec[li][ti].first ][ availPos_vec[li][ti].second ].visited || 
-                        (room[ availPos_vec[li][ti].first ][ availPos_vec[li][ti].second ].serial_number == pinfo.serial_number && 
-                         room[ availPos_vec[li][ti].first ][ availPos_vec[li][ti].second ].probeTrail[pinfo.id])) {
-                    // visited
+            int tmpi = li-1;
+            log_probe_info("\t    last check.  availPos_vec[%d].size(): %lu\n", tmpi-1, availPos_vec[tmpi-1].size());
+
+
+            for(int ti = 0; ti < availPos_vec[tmpi].size(); ti++) {
+                log_probe_info("\t\t%d, %d...", availPos_vec[tmpi][ti].first, availPos_vec[tmpi][ti].second);
+
+                if (room[availPos_vec[tmpi][ti].first][availPos_vec[tmpi][ti].second].isPlug) {
+                // is plug, but have to enter from enter_dir!
+                    log_probe_info("is plug!\n");
+                    char c = *(availPos_vec[tmpi][ti].path.rbegin());
+                    if (enter_dir != OppositeDir(c)) {
+                        log_probe_info("\t\t  But enters from %s!  Need to enter from %s!\n", _DIRNAME[OppositeDir(c)], _DIRNAME[enter_dir]);
+                        continue; // plug is still a wall, which is invalid.
                     } else {
-                    // not visited
-                        targetPos_vec.push_back(availPos_vec[li][ti]);
+                        log_probe_info("\t\t  And enters from correct direction! (%s)\n", _DIRNAME[enter_dir]);
+                        if (!plug_found) {
+                            plug_found = true;
+                            targetPos_vec.clear();
+                        }
+                        targetPos_vec.push_back(availPos_vec[tmpi][ti]);
+                    }
+                } else if (!plug_found) {
+                    if (isValidPosition(availPos_vec[tmpi][ti].first, availPos_vec[tmpi][ti].second, false)) {
+                        if (room[ availPos_vec[tmpi][ti].first ][ availPos_vec[tmpi][ti].second ].visited || 
+                            (room[ availPos_vec[tmpi][ti].first ][ availPos_vec[tmpi][ti].second ].serial_number == pinfo.serial_number && 
+                             room[ availPos_vec[tmpi][ti].first ][ availPos_vec[tmpi][ti].second ].probeTrail[pinfo.id])) {
+                        // visited
+                            log_probe_info("has been visited...\n");
+                        } else {
+                        // not visited
+                            targetPos_vec.push_back(availPos_vec[tmpi][ti]);
+                            log_probe_info("is unvisited!  added to targetPos_vec\n");
+                        }
                     }
                 }
             }
             if (targetPos_vec.size() == 0) {
             // none are unvisited or plug
                 // random pick
-                targetPos_vec.push_back( availPos_vec[li][ GetRand(pinfo.id) % availPos_vec[li].size() ] );
+                targetPos_vec.push_back( availPos_vec[tmpi][ GetRand(pinfo.id) % availPos_vec[tmpi].size() ] );
             } else {
             // some are unvisited or plug
             }
@@ -1169,15 +1214,26 @@ char OfflineCoverage::BFSProbe(vector<char>& travelOrder, short& aye, short& jay
                     // if visited, add adjacent, unchecked tiles that has lower potential to availPos_vec
                     short tmpAye = availPos_vec[li-1][ti].first + _DAYE[i];
                     short tmpJay = availPos_vec[li-1][ti].second + _DJAY[i];
-                    log_probe_info("\t    %d, %d (serialNo. %d, pT: %c) ...  ", tmpAye, tmpJay, room[ tmpAye ][ tmpJay ].serial_number, (room[ tmpAye ][ tmpJay ].probeTrail[pinfo.id] == true ? 'T' : 'F'));
-
+                    log_probe_info("\t    %d, %d  ", tmpAye, tmpJay);
+                    if (isValidPosition(tmpAye, tmpJay, true))
+                        log_probe_info("(serialNo. %d, pT: %c) ...  ", room[ tmpAye ][ tmpJay ].serial_number, (room[ tmpAye ][ tmpJay ].probeTrail[pinfo.id] == true ? 'T' : 'F'));
+                    else {
+                        log_probe_info("is INVALID!\n");
+                        continue;
+                    }
                     if (room[tmpAye][tmpJay].isPlug) {
                         log_probe_info("is plug!\n");
-                        if (!plug_found) {
-                            targetPos_vec.clear();
-                            plug_found = true;
+                        if (OppositeDir(i) != enter_dir) {
+                        // enters from different direction
+                            log_probe_info("\t\tEnters from different direction(%s).\n", _DIRNAME[i]);
+                        } else {
+                            log_probe_info("\t\tEnters from correct direction(%s).\n", _DIRNAME[i]);
+                            if (!plug_found) {
+                                targetPos_vec.clear();
+                                plug_found = true;
+                            }
+                            targetPos_vec.push_back( BFS_pos(tmpAye, tmpJay, availPos_vec[li-1][ti].path, i) );
                         }
-                        targetPos_vec.push_back( BFS_pos(tmpAye, tmpJay, availPos_vec[li-1][ti].path, i) );
                     } else if (!plug_found) {
                         if (isValidPosition(tmpAye, tmpJay, false)) {
                             if (room[ tmpAye ][ tmpJay ].visited ||
@@ -1199,8 +1255,8 @@ char OfflineCoverage::BFSProbe(vector<char>& travelOrder, short& aye, short& jay
                                         log_probe_info("... because it's further away.\n");
                                     } else {
                                     // has lower potential, add
-                                        log_probe_info("Added!\n");
                                         availPos_vec[li].push_back( BFS_pos(tmpAye, tmpJay, availPos_vec[li-1][ti].path, i) );
+                                        log_probe_info("Added!  aP_c[%d].size(): %lu\n", li, availPos_vec[li].size());
                                     }
                                 }
                             } else {
@@ -1219,8 +1275,9 @@ char OfflineCoverage::BFSProbe(vector<char>& travelOrder, short& aye, short& jay
                                 room[ tmpAye ][ tmpJay ].probeTrail[pinfo.id] = false;
                             }
                         } else log_probe_info("is invalid.\n");
-                    }
+                    } else log_probe_info("... plug has been found.  Disgard those that aren't plug.\n");
                 }
+                if (targetPos_vec.size() != 0) break;
             }
         }
 
@@ -1321,7 +1378,12 @@ inline char OfflineCoverage::CountAdjacentUnvisited(short& aye, short& jay) {
 }
 
 inline char OfflineCoverage::isValidPosition(short aye, short jay, bool allowWall) {
-    return (aye >= 0 && jay >= 0 && aye <= height-1 && jay <= width-1 && !(!allowWall && room[aye][jay].isWall));
+    if (aye >= 0 && jay >= 0 && aye <= height-1 && jay <= width-1) {
+        if (!(!allowWall && room[aye][jay].isWall)) {
+            return true;
+        }
+    } 
+    return false;
 }
 
 
@@ -1429,15 +1491,16 @@ void OfflineCoverage::PrintMap_Status(short curr_aye, short curr_jay) {
 
 void OfflineCoverage::Print_dist_vet() {
     _DONOTPRINT;
-    printf("[DIST_VEC]  max dist: %lu\n", dist_vec.size()-1);
+    log_set_info("[DIST_VEC]  max dist: %lu\n", dist_vec.size()-1);
     for(int i=0; i<dist_vec.size(); i++) {
-        cout << "\t" << i << " steps away:" << "\n";
+        log_set_op("\t%d steps away:\n", i);
         for(auto it = dist_vec[i].begin(); it!=dist_vec[i].end(); it++) {
-            cout << "\t  " << getAye_dv(it) << " " << getJay_dv(it) << "\n";
+            log_set_op("\t  %d %d\n", getAye_dv(it), getJay_dv(it));
         }
     }
 }
 
+// nope
 void OfflineCoverage::Print_dir_dist_vet() {
     _DONOTPRINT;
     for(int i=0; i<4; i++) {
@@ -1476,9 +1539,14 @@ set<unsigned int>::iterator OfflineCoverage::PeekNextPoint() {
 set<unsigned int>::iterator OfflineCoverage::GetNextPoint() {
     log_set_op("<set - Get>  GetNextPoint (%d)...\n", _max_unvisited_dist);
 
-    cout << "\t" << _max_unvisited_dist << " steps away:" << "\n";
+    log_set_op("\t%d steps away:\n", _max_unvisited_dist);
     for(auto it = dist_vec[_max_unvisited_dist].begin(); it!=dist_vec[_max_unvisited_dist].end(); it++) {
-        cout << "\t  " << getAye_dv(it) << " " << getJay_dv(it) << "\n";
+        log_set_op("\t  %d %d\n", getAye_dv(it), getJay_dv(it));
+    }
+
+    if (hasRemoved) { // start from begining
+        hasRemoved = false;
+        _set_iter = dist_vec[_max_unvisited_dist].begin();
     }
 
     if (dist_vec[_max_unvisited_dist].size() == 0) {
@@ -1491,13 +1559,12 @@ set<unsigned int>::iterator OfflineCoverage::GetNextPoint() {
         log_set_op("\t  Done.  dist_vec[%d] has %lu entry.\n", _max_unvisited_dist, dist_vec[_max_unvisited_dist].size());
         _set_iter = dist_vec[_max_unvisited_dist].begin();
     }
-    printf("Oi! ");
+
     if (_set_iter == dist_vec[_max_unvisited_dist].end()) {
         log_set_op("\tReached end for max distance(%d)\n", _max_unvisited_dist);
         _set_iter = dist_vec[_max_unvisited_dist].begin();
     }
-    
-    cout << "\t  Got: " << getAye_dv(_set_iter) << " " << getJay_dv(_set_iter) << "\n";
+    log_set_op("\t  Got: %d %d\n", getAye_dv(_set_iter), getJay_dv(_set_iter));
 
     return _set_iter++;
 }
@@ -1526,13 +1593,17 @@ set<unsigned int>::iterator OfflineCoverage::GetNextPoint(int dir) {
 }
 
 void OfflineCoverage::RemovePoint(short aye, short jay, int potential) {
-    log_set_op("<set - Remove>  Removing %d, %d from dist_vec[%d]\n", aye, jay, potential);
+    log_set_op("<set - Remove>  Removing %d, %d from dist_vec[%d]    Curr: %d %d\n", aye, jay, potential, getAye_dv(_set_iter), getJay_dv(_set_iter));
     set<unsigned int>::iterator iter = dist_vec[potential].find(trans_int(aye, jay));
+
+    if (!hasRemoved) {    
+        hasRemoved = true;
+    }
     if (iter == dist_vec[potential].cend()) {
         perror("\tNot found in dist_vec!\n");
     } else {
         _set_iter = dist_vec[potential].erase(iter);
-        printf("\tdist_vec[%d].size(): %lu\n", potential, dist_vec[potential].size());
+        log_set_op("\tdist_vec[%d].size(): %lu\n", potential, dist_vec[potential].size());
     }
 }
 
@@ -1555,6 +1626,22 @@ void OfflineCoverage::RemovePoint(short aye, short jay, int potential, int dir) 
 }
 
 void OfflineCoverage::TestSet() {
+    printf("Set test:\n");
+    for(int i=0; i<9; i++) {
+        set<unsigned int>::iterator val = GetNextPoint();
+        printf("%d, %d\n", getAye_dv(val), getJay_dv(val));
+    }
+    printf("\n");
+
+    RemovePoint(1, 2, 7);
+
+    printf("Set test:\n");
+    for(int i=0; i<9; i++) {
+        set<unsigned int>::iterator val = GetNextPoint();
+        printf("%d, %d\n", getAye_dv(val), getJay_dv(val));
+    }
+    printf("\n");
+
     return;
     for(int i=0; i<4; i++) {
         if (dir_dist_vec[i].size() == 0) {
@@ -1566,5 +1653,16 @@ void OfflineCoverage::TestSet() {
             printf("(pot: %d) %d, %d\n", pot_map[i][getAye_dv(val)][getJay_dv(val)], getAye_dv(val), getJay_dv(val));
             RemovePoint(getAye_dv(val), getJay_dv(val), pot_map[i][getAye_dv(val)][getJay_dv(val)], i);
         }
+    }
+}
+
+char OfflineCoverage::OppositeDir(char dir) {
+    if (dir == UP) return DOWN;
+    else if (dir == DOWN) return UP;
+    else if (dir == LEFT) return RIGHT;
+    else if (dir == RIGHT) return LEFT;
+    else {
+        // uhhh...
+        return -1;
     }
 }
